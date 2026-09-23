@@ -1,7 +1,9 @@
 ﻿namespace Skyline.DataMiner.CICD.Assemblers.Common.Tests
 {
+    using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Linq;
     using System.Threading.Tasks;
 
     using FluentAssertions;
@@ -135,7 +137,6 @@
 
             const string targetFrameworkMoniker = ".NETFramework,Version=v4.8";
 
-            const string pathJson_13_0_3 = "newtonsoft.json\\13.0.3\\lib\\net45";
             const string pathJson_13_0_4 = "newtonsoft.json\\13.0.4\\lib\\net45";
 
             var expectedResult = new NuGetPackageAssemblyData
@@ -148,17 +149,8 @@
                 {
                     new PackageAssemblyReference(Path.Combine(pathJson_13_0_4, "Newtonsoft.Json.dll"), null, false),
                 },
-                DllImportDirectoryReferences =
-                {
-                    $@"{pathJson_13_0_3}\",
-                },
-                DllImportDirectoryReferencesAssembly =
-                {
-                    [$@"{pathJson_13_0_3}\"] = Path.Combine(pathJson_13_0_3, "Newtonsoft.Json.dll")
-                },
                 NugetAssemblies =
                 {
-                    new PackageAssemblyReference(Path.Combine(pathJson_13_0_3, "Newtonsoft.Json.dll"), null, false),
                     new PackageAssemblyReference(Path.Combine(pathJson_13_0_4, "Newtonsoft.Json.dll"), null, false),
                 },
                 ProcessedAssemblies =
@@ -172,6 +164,41 @@
 
             // Assert
             result.Should().BeEquivalentTo(expectedResult, ExcludeAssemblyPath);
+        }
+
+        [TestMethod]
+        public async Task ProcessAsyncTest_MulitpleVersionOfSameBuildOnlyNuGet_DoesNotUseStaleLowerVersion()
+        {
+            // Arrange
+            var packageReferenceProcessor = new PackageReferenceProcessor(directoryForNuGetConfig: null);
+
+            IList<PackageIdentity> projectPackages = new List<PackageIdentity>
+            {
+                new PackageIdentity("Skyline.DataMiner.SDM", new NuGetVersion("1.0.1-rc1")),
+                new PackageIdentity("Skyline.DataMiner.SDM", new NuGetVersion("1.0.2")),
+            };
+
+            const string targetFrameworkMoniker = ".NETFramework,Version=v4.8";
+            const string pathRuntime = "skyline.dataminer.sdm.sourcegenerator.runtime\\1.0.2\\lib\\netstandard2.0";
+            const string pathAbstractions = "skyline.dataminer.dev.utils.sdm.abstractions\\1.0.2\\lib\\net48";
+            const string staleSdmPathPrefix = "skyline.dataminer.sdm\\1.0.1-rc1\\";
+
+            // Act
+            var result = await packageReferenceProcessor.ProcessAsync(projectPackages, targetFrameworkMoniker);
+
+            // Assert
+            result.DllImportNugetAssemblyReferences.Select(x => x.DllImport).Should().Contain(Path.Combine(pathRuntime, "Skyline.DataMiner.SDM.SourceGenerator.Runtime.dll"));
+            result.DllImportNugetAssemblyReferences.Select(x => x.DllImport).Should().Contain(Path.Combine(pathAbstractions, "Skyline.DataMiner.Dev.Utils.SDM.Abstractions.dll"));
+            result.NugetAssemblies.Select(x => x.DllImport).Should().Contain(Path.Combine(pathRuntime, "Skyline.DataMiner.SDM.SourceGenerator.Runtime.dll"));
+            result.NugetAssemblies.Select(x => x.DllImport).Should().Contain(Path.Combine(pathAbstractions, "Skyline.DataMiner.Dev.Utils.SDM.Abstractions.dll"));
+
+            result.DllImportNugetAssemblyReferences.Select(x => x.DllImport).Should().NotContain(x => x.StartsWith(staleSdmPathPrefix, StringComparison.OrdinalIgnoreCase));
+            result.NugetAssemblies.Select(x => x.DllImport).Should().NotContain(x => x.StartsWith(staleSdmPathPrefix, StringComparison.OrdinalIgnoreCase));
+            result.DllImportDirectoryReferences.Should().NotContain(x => x.StartsWith(staleSdmPathPrefix, StringComparison.OrdinalIgnoreCase));
+            result.DllImportDirectoryReferencesAssembly.Keys.Should().NotContain(x => x.StartsWith(staleSdmPathPrefix, StringComparison.OrdinalIgnoreCase));
+
+            result.DllImportNugetAssemblyReferences.Select(x => x.DllImport).Should().NotContain(x => x.EndsWith("\\Skyline.DataMiner.SDM.dll", StringComparison.OrdinalIgnoreCase));
+            result.NugetAssemblies.Select(x => x.DllImport).Should().NotContain(x => x.EndsWith("\\Skyline.DataMiner.SDM.dll", StringComparison.OrdinalIgnoreCase));
         }
 
         [TestMethod]

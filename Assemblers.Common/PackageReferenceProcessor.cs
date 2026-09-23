@@ -379,12 +379,13 @@
             }
 
             HashSet<string> processedPackages = new HashSet<string>();
+            HashSet<string> resolvedPackageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Resolved Packages are top level NuGet Packages
-            await ProcessResolvedPackagesAsync(resolvedPackages, nugetPackageAssemblies, processedPackages, nugetFramework, defaultIncludedFilesNuGetPackages);
+            await ProcessResolvedPackagesAsync(resolvedPackages, nugetPackageAssemblies, processedPackages, resolvedPackageIds, nugetFramework, defaultIncludedFilesNuGetPackages);
 
             // Remaining Packages are Dependencies
-            await ProcessRemainingPackagesAsync(filteredAllPackages, nugetPackageAssemblies, processedPackages, nugetFramework, defaultIncludedFilesNuGetPackages);
+            await ProcessRemainingPackagesAsync(filteredAllPackages, nugetPackageAssemblies, processedPackages, resolvedPackageIds, nugetFramework, defaultIncludedFilesNuGetPackages);
 
             return nugetPackageAssemblies;
         }
@@ -406,9 +407,10 @@
             }
 
             HashSet<string> processedPackages = new HashSet<string>();
+            HashSet<string> resolvedPackageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Resolved Packages are top level NuGet Packages
-            await ProcessResolvedPackagesAsync(resolvedPackages, nugetPackageAssemblies, processedPackages, nugetFramework, defaultIncludedFilesNuGetPackages);
+            await ProcessResolvedPackagesAsync(resolvedPackages, nugetPackageAssemblies, processedPackages, resolvedPackageIds, nugetFramework, defaultIncludedFilesNuGetPackages);
 
             return nugetPackageAssemblies;
         }
@@ -419,15 +421,17 @@
         /// <param name="resolvedPackages">The resolved packages.</param>
         /// <param name="nugetPackageAssemblies">The NuGet package assemblies.</param>
         /// <param name="processedPackages">The processed packages.</param>
+        /// <param name="resolvedPackageIds">The resolved package IDs.</param>
         /// <param name="nugetFramework">The NuGet framework.</param>
         /// <param name="defaultIncludedFilesNuGetPackages">The default NuGet "Skyline.DataMiner.Files." NuGet packages that are already referenced by default.</param>
-        private async Task ProcessResolvedPackagesAsync(IEnumerable<PackageIdentity> resolvedPackages, NuGetPackageAssemblyData nugetPackageAssemblies, ISet<string> processedPackages, NuGetFramework nugetFramework, IReadOnlyCollection<string> defaultIncludedFilesNuGetPackages)
+        private async Task ProcessResolvedPackagesAsync(IEnumerable<PackageIdentity> resolvedPackages, NuGetPackageAssemblyData nugetPackageAssemblies, ISet<string> processedPackages, ISet<string> resolvedPackageIds, NuGetFramework nugetFramework, IReadOnlyCollection<string> defaultIncludedFilesNuGetPackages)
         {
             // For all assemblies in the resolved package list we provide the reference to the assembly.
             foreach (var resolvedPackage in resolvedPackages)
             {
                 string packageKey = resolvedPackage.Id.ToLower() + "\\" + resolvedPackage.Version.ToString().ToLower();
                 processedPackages.Add(packageKey);
+                resolvedPackageIds.Add(resolvedPackage.Id);
 
                 using (PackageReaderBase packageReader = GetPackageReader(resolvedPackage))
                 {
@@ -619,14 +623,16 @@
         /// <param name="allPackages">All packages.</param>
         /// <param name="nugetPackageAssemblies">The NuGet package assemblies.</param>
         /// <param name="processedPackages">The processed packages.</param>
+        /// <param name="resolvedPackageIds">The resolved package IDs.</param>
         /// <param name="nugetFramework">The NuGet framework.</param>
-        private async Task ProcessRemainingPackagesAsync(HashSet<SourcePackageDependencyInfo> allPackages, NuGetPackageAssemblyData nugetPackageAssemblies, ICollection<string> processedPackages, NuGetFramework nugetFramework, IReadOnlyCollection<string> defaultIncludedFilesNuGetPackages)
+        /// <param name="defaultIncludedFilesNuGetPackages">The default NuGet "Skyline.DataMiner.Files." NuGet packages that are already referenced by default.</param>
+        private async Task ProcessRemainingPackagesAsync(HashSet<SourcePackageDependencyInfo> allPackages, NuGetPackageAssemblyData nugetPackageAssemblies, ICollection<string> processedPackages, ISet<string> resolvedPackageIds, NuGetFramework nugetFramework, IReadOnlyCollection<string> defaultIncludedFilesNuGetPackages)
         {
             // For all assemblies that are not in the resolved package list, we provide the folder where the assembly can be found.
             foreach (var packageToInstall in allPackages)
             {
                 string packageKey = packageToInstall.Id.ToLower() + "\\" + packageToInstall.Version.ToString().ToLower();
-                if (processedPackages.Contains(packageKey))
+                if (processedPackages.Contains(packageKey) || resolvedPackageIds.Contains(packageToInstall.Id))
                 {
                     continue;
                 }
